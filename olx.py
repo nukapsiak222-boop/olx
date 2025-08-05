@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import re
+import threading
 
 SZUKANE_WYRAZENIA = [
     "gtx 1050 ti",
@@ -20,13 +21,9 @@ CENA_MAX = 110
 CZAS_ODSWIEZANIA = 30
 widziane_oferty = set()
 
-# Wstaw swój Discord webhook URL tutaj (string)
 DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1402424311129833504/vXJzzJOhbWpzmOlXDMWmwzA3nEEksGVVjLubzj3kCtaemlKTsH8MdF8msobBuGPG7AVV"
+DISCORD_USER_ID = "692071922761990165"
 
-# Wstaw swój Discord User ID (liczby, np. 123456789012345678)
-DISCORD_USER_ID = "692071922761990165"  # <- TU wpisz swoje ID
-
-# Słowa wykluczające (jeśli w tytule lub opisie, odrzucamy)
 WYLACZENIA = [
     "uszkodz", "niedział", "na części", "na czesci", "nie działa", "nie dziala",
     "zepsut", "spalona", "nie sprawdzona", "niesprawna", "nieznan", "przerobion"
@@ -42,15 +39,13 @@ def oferta_jest_ok(tytul, opis, cena):
 
 def wyciagnij_cene(z_oferty):
     tekst = z_oferty.text.lower()
-    # Regex łapiący liczby z spacjami i opcjonalnym przecinkiem i groszami
     wzorzec = re.compile(r'(\d[\d\s]*)(,\d{1,2})?\s*zł')
     match = wzorzec.search(tekst)
     if match:
-        liczba_tekst = match.group(1).replace(" ", "")  # usuń spacje z części całkowitej
-        grosze = match.group(2)  # np. ",99" lub None
+        liczba_tekst = match.group(1).replace(" ", "")
+        grosze = match.group(2)
         try:
             if grosze:
-                # zamień przecinek na kropkę, konwertuj na float i zaokrąglij na int
                 cena = float(liczba_tekst + grosze.replace(',', '.'))
                 return int(round(cena))
             else:
@@ -59,10 +54,9 @@ def wyciagnij_cene(z_oferty):
             return None
     return None
 
-
 def wyslij_powiadomienie_discord(tytul, link, cena):
     if not DISCORD_WEBHOOK_URL or not DISCORD_USER_ID:
-        return  # jeśli brak webhooka lub ID, pomiń
+        return
 
     dane = {
         "content": f"<@{DISCORD_USER_ID}> 🚨 **Nowa oferta poniżej {CENA_MAX} zł!**\n**{tytul}**\nCena: {cena} zł\n{link}"
@@ -70,7 +64,7 @@ def wyslij_powiadomienie_discord(tytul, link, cena):
 
     try:
         r = requests.post(DISCORD_WEBHOOK_URL, json=dane)
-        if r.status_code != 204 and r.status_code != 200:
+        if r.status_code not in (200, 204):
             print(f"❌ Błąd wysłania webhooka Discord: {r.status_code} {r.text}")
     except Exception as e:
         print(f"❌ Wyjątek przy wysyłaniu webhooka Discord: {e}")
@@ -110,15 +104,13 @@ def znajdz_nowe_oferty(url):
             nowe_oferty.append((tytul, link, cena))
             widziane_oferty.add(link)
 
-            # Wyślij powiadomienie jeśli cena jest poniżej limitu
             if cena is not None and cena <= CENA_MAX:
                 wyslij_powiadomienie_discord(tytul, link, cena)
 
     return nowe_oferty
 
-def main():
+def main_loop():
     print(f"🔍 Monitoruję OLX dla fraz: {', '.join(SZUKANE_WYRAZENIA)} (max {CENA_MAX} zł, bez uszkodzonych)")
-
     while True:
         znalezione = []
         for fraza in SZUKANE_WYRAZENIA:
@@ -137,4 +129,4 @@ def main():
         time.sleep(CZAS_ODSWIEZANIA)
 
 if __name__ == "__main__":
-    main()
+    main_loop()
